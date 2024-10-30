@@ -42,7 +42,6 @@ class McfImporter(Importer):
     self.output_file = output_file
     self.db = db
     self.reporter = reporter
-    self.input_file_name = self.input_file.basename()
     self.is_main_dc = is_main_dc
 
   def do_import(self) -> None:
@@ -54,7 +53,7 @@ class McfImporter(Importer):
       else:
         triples = self._mcf_to_triples()
         logging.info("Inserting %s triples from %s", len(triples),
-                     self.input_file_name)
+                     self.input_file.full_path())
         self.db.insert_triples(triples)
 
       self.reporter.report_success()

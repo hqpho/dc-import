@@ -41,17 +41,16 @@ class EntitiesImporter(Importer):
     self.db = db
     self.reporter = reporter
     self.nodes = nodes
-    self.input_file_name = self.input_file.basename()
     self.config = nodes.config
-    self.ignore_columns = self.config.ignore_columns(self.input_file_name)
-    self.provenance = self.nodes.provenance(self.input_file_name).id
+    self.ignore_columns = self.config.ignore_columns(self.input_file)
+    self.provenance = self.nodes.provenance(self.input_file).id
 
-    self.row_entity_type = self.config.row_entity_type(self.input_file_name)
-    assert self.row_entity_type, f"Row entity type must be specified: {self.input_file_name}"
+    self.row_entity_type = self.config.row_entity_type(self.input_file)
+    assert self.row_entity_type, f"Row entity type must be specified: {self.input_file.full_path()}"
 
-    self.id_column = self.config.id_column(self.input_file_name)
+    self.id_column = self.config.id_column(self.input_file)
     # Reassigned when renaming columns.
-    self.entity_columns = set(self.config.entity_columns(self.input_file_name))
+    self.entity_columns = set(self.config.entity_columns(self.input_file))
 
     self.df = pd.DataFrame()
 
@@ -110,7 +109,7 @@ class EntitiesImporter(Importer):
     # Add event type node - it will be written to DB later.
     # This is to avoid duplicate entity types in scenarios where entities of the same type
     # are spread across files.
-    self.nodes.entity_type(self.row_entity_type, self.input_file_name)
+    self.nodes.entity_type(self.row_entity_type, self.input_file)
 
     # All property columns would've been renamed to their dcids by now.
     # So use the id column's dcid as the id column name.

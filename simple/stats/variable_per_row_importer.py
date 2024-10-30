@@ -57,7 +57,6 @@ class VariablePerRowImporter(Importer):
     self.input_file = input_file
     self.db = db
     self.reporter = reporter
-    self.input_file_name = self.input_file.basename()
     self.nodes = nodes
     self.config = nodes.config
     # Reassign after reading CSV.
@@ -83,7 +82,7 @@ class VariablePerRowImporter(Importer):
     self.reader = DictReader(self.input_file.read_string_io())
 
   def _map_columns(self):
-    config_mappings = self.config.column_mappings(self.input_file_name)
+    config_mappings = self.config.column_mappings(self.input_file)
 
     # Required columns.
     for key in self.column_mappings.keys():
@@ -107,9 +106,9 @@ class VariablePerRowImporter(Importer):
       )
 
   def _write_observations(self) -> None:
-    provenance = self.nodes.provenance(self.input_file_name).id
+    provenance = self.nodes.provenance(self.input_file).id
     obs_props = ObservationProperties.new(
-        self.config.observation_properties(self.input_file_name))
+        self.config.observation_properties(self.input_file))
 
     observations: list[Observation] = []
     for row in self.reader:
@@ -125,7 +124,7 @@ class VariablePerRowImporter(Importer):
           properties=row_obs_props)
       observations.append(observation)
       self.entity_dcids[entity_dcid] = True
-    self.db.insert_observations(observations, self.input_file_name)
+    self.db.insert_observations(observations, self.input_file)
 
   def _get_row_obs(self, row: dict[str, str]) -> dict[str, str]:
     properties: dict[str, str] = {}

@@ -34,6 +34,7 @@ from stats.data import STAT_VAR_GROUP
 from stats.data import STATISTICAL_VARIABLE
 from stats.data import Triple
 from util.filesystem import create_store
+from util.filesystem import File
 
 FIELD_DB_TYPE = "type"
 FIELD_DB_PARAMS = "params"
@@ -205,7 +206,7 @@ class Db:
     pass
 
   def insert_observations(self, observations: list[Observation],
-                          input_file_name: str):
+                          input_file: File):
     pass
 
   def insert_key_value(self, key: str, value: str):
@@ -246,13 +247,14 @@ class MainDcDb(Db):
       self._add_triple(triple)
 
   def insert_observations(self, observations: list[Observation],
-                          input_file_name: str):
+                          input_file: File):
     df = pd.DataFrame(observations)
     # Drop the provenance and properties columns.
     # Provenance is specified differently for main dc.
     # TODO: Include obs properties in main DC output.
     df = df.drop(columns=["provenance", "properties"])
-    self.output_dir.open_file(input_file_name).write(df.to_csv(index=False))
+    # TODO Handle collisions
+    self.output_dir.open_file(input_file.path).write(df.to_csv(index=False))
 
   def insert_import_info(self, status: ImportStatus):
     # No-op for now.
@@ -307,7 +309,7 @@ class SqlDb(Db):
                               [triple.db_tuple() for triple in triples])
 
   def insert_observations(self, observations: list[Observation],
-                          input_file_name: str):
+                          input_file: File):
     logging.info("Writing %s observations to [%s]", len(observations),
                  self.engine)
     self.num_observations += len(observations)

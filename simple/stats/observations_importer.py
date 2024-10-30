@@ -39,10 +39,9 @@ class ObservationsImporter(Importer):
     self.debug_resolve_file = debug_resolve_file
     self.reporter = reporter
     self.nodes = nodes
-    self.input_file_name = self.input_file.basename()
     self.config = nodes.config
-    self.entity_type = self.config.entity_type(self.input_file_name)
-    self.ignore_columns = self.config.ignore_columns(self.input_file_name)
+    self.entity_type = self.config.entity_type(self.input_file)
+    self.ignore_columns = self.config.ignore_columns(self.input_file)
     # Reassign after reading CSV.
     self.entity_column_name = constants.COLUMN_DCID
     self.df = pd.DataFrame()
@@ -97,7 +96,7 @@ class ObservationsImporter(Importer):
     # Rename SV columns to their IDs
     sv_column_names = self.df.columns[2:]
     sv_ids = [
-        self.nodes.variable(sv_column_name, self.input_file_name).id
+        self.nodes.variable(sv_column_name, self.input_file).id
         for sv_column_name in sv_column_names
     ]
     renamed.update({col: id for col, id in zip(sv_column_names, sv_ids)})
@@ -114,9 +113,9 @@ class ObservationsImporter(Importer):
         value_name=constants.COLUMN_VALUE,
     )
 
-    provenance = self.nodes.provenance(self.input_file_name).id
+    provenance = self.nodes.provenance(self.input_file).id
     obs_props = ObservationProperties.new(
-        self.config.observation_properties(self.input_file_name))
+        self.config.observation_properties(self.input_file))
 
     observations: list[Observation] = []
     for _, row in observations_df.iterrows():
@@ -128,7 +127,7 @@ class ObservationsImporter(Importer):
                                 properties=obs_props)
       if observation.value and observation.value != "<NA>":
         observations.append(observation)
-    self.db.insert_observations(observations, self.input_file_name)
+    self.db.insert_observations(observations, self.input_file)
 
   def _add_entity_nodes(self) -> None:
     # Convert entity dcids to dict.

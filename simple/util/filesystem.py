@@ -17,32 +17,45 @@ in a platform-agnostic way."""
 import io
 
 import fs
+import fs.base
+import fs.path as fspath
 
 _GCS_PATH_PREFIX = "gs://"
 
 
 class _FSWrapper():
 
-  def __init__(self, fs: fs.base.FS):
+  def __init__(self, fs: fs.base.FS, parent_path: str):
+    # TODO Maybe put Store here instead?
     self.fs = fs
+    self.parent_path = parent_path
 
 
 class File(_FSWrapper):
 
-  def __init__(self,
-               fs: fs.base.FS,
-               path: str,
-               create_if_missing: bool = False):
-    super.__init__(self, fs)
+  def __init__(self, fs: fs.base.FS, path: str, parent_path: str,
+               create_if_missing: bool):
+    super().__init__(fs, parent_path)
     self.path = path
     if not self.fs.exists(self.path):
       if create_if_missing:
+        if not self.fs.isdir(fspath.dirname(path)):
+          self.fs.makedirs(fspath.dirname(path))
         self.fs.touch(path)
       else:
-        raise FileNotFoundError(f"File not found: ${path}")
+        raise FileNotFoundError(f"File not found: {path}")
+
+  def __str__(self) -> str:
+    return self.path
 
   def name(self) -> str:
     return fs.path.basename(self.path)
+
+  def full_path(self) -> str:
+    return self.parent_path + self.path
+
+  def match(self, patterns: list[str]) -> bool:
+    return self.fs.match(patterns, self.path)
 
   def read(self) -> str:
     return self.fs.readtext(self.path)
@@ -65,31 +78,35 @@ class File(_FSWrapper):
 
 class Dir(_FSWrapper):
 
-  def __init__(self, fs: fs.base.FS):
-    super.__init__(self, fs)
-
-  # def exists(self, path: str) -> bool:
-  #   return self.fs.exists(path)
+  def __init__(self, fs: fs.base.FS, parent_path: str):
+    super().__init__(fs, parent_path)
 
   def open_dir(self, path: str) -> "Dir":
     # TODO make create_if_missing consistent
     if not self.fs.exists(path):
       self.fs.makedirs(path)
     if not self.fs.isdir(path):
-      raise ValueError(f"{path} exists and is not a directory")
-    return Dir(self.fs.opendir(path))
+      raise ValueError(f"{self.full_path()} exists and is not a directory")
+    return Dir(self.fs.opendir(path), parent_path=self.full_path())
 
   def open_file(self, path: str, create_if_missing: bool = False) -> File:
     if self.fs.isdir(path):
-      raise ValueError(f"{path} exists and is a directory, not a file")
-    return File(self.fs, path, create_if_missing)
+      raise ValueError(
+          f"{self.full_path()} exists and is a directory, not a file")
+    return File(self.fs, path, self.parent_path, create_if_missing)
 
-  def find_by_extension(self, extension: str) -> list[File]:
+  def all_files(self):
     files = []
     for path in self.fs.walk.files():
-      if path.endswith(extension):
-        files.append(self.open_file(path))
+      files.append(self.open_file(path))
     return files
+
+  # def find_matching(self, patterns: list[str]) -> list[File]:
+  #   files = []
+  #   for path in self.fs.walk.files():
+  #     if self.fs.match_glob(patterns, path):
+  #       files.append(self.open_file(path))
+  #   return files
 
 
 class Store:
@@ -108,10 +125,13 @@ class Store:
     return self.fs.isdir(".")
 
   def as_dir(self) -> Dir:
-    return Dir(self.fs)
+    return Dir(self.fs, parent_path=self.path)
 
   def as_file(self, create_if_missing: bool = False) -> File:
-    return File(self.fs, create_if_missing)
+    return File(self.fs,
+                ".",
+                parent_path=self.path,
+                create_if_missing=create_if_missing)
 
   def is_high_latency(self) -> bool:
     return self.path.startswith(_GCS_PATH_PREFIX)
