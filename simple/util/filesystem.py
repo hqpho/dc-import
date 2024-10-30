@@ -14,20 +14,32 @@
 """A thin wrapper on PyFilesystem for working with files and directories
 in a platform-agnostic way."""
 
+import io
+
 import fs
 
+_GCS_PATH_PREFIX = "gs://"
 
-class _SubFSWrapper():
 
-  def __init__(self, fs: fs.subfs.SubFS):
+class _FSWrapper():
+
+  def __init__(self, fs: fs.base.FS):
     self.fs = fs
 
 
-class File(_SubFSWrapper):
+class File(_FSWrapper):
 
-  def __init__(self, fs: fs.subfs.SubFS, path: str):
+  def __init__(self,
+               fs: fs.base.FS,
+               path: str,
+               create_if_missing: bool = False):
     super.__init__(self, fs)
     self.path = path
+    if not self.fs.exists(self.path):
+      if create_if_missing:
+        self.fs.touch(path)
+      else:
+        raise FileNotFoundError(f"File not found: ${path}")
 
   def name(self) -> str:
     return fs.path.basename(self.path)
@@ -44,28 +56,33 @@ class File(_SubFSWrapper):
   def write_bytes(self, content: bytes) -> None:
     self.fs.writebytes(self.path, content)
 
+  def read_string_io(self) -> io.StringIO:
+    return io.StringIO(self.read())
 
-class Dir(_SubFSWrapper):
+  def openbin(self) -> io.IOBase:
+    return self.fs.openbin(self.path)
 
-  def __init__(self, fs: fs.subfs.SubFS):
+
+class Dir(_FSWrapper):
+
+  def __init__(self, fs: fs.base.FS):
     super.__init__(self, fs)
 
   # def exists(self, path: str) -> bool:
   #   return self.fs.exists(path)
 
   def open_dir(self, path: str) -> "Dir":
+    # TODO make create_if_missing consistent
     if not self.fs.exists(path):
       self.fs.makedirs(path)
     if not self.fs.isdir(path):
       raise ValueError(f"{path} exists and is not a directory")
     return Dir(self.fs.opendir(path))
 
-  def open_file(self, path: str) -> File:
-    if not self.fs.exists(self.path):
-      self.fs.touch(path)
+  def open_file(self, path: str, create_if_missing: bool = False) -> File:
     if self.fs.isdir(path):
       raise ValueError(f"{path} exists and is a directory, not a file")
-    return File(self.fs, path)
+    return File(self.fs, path, create_if_missing)
 
   def find_by_extension(self, extension: str) -> list[File]:
     files = []
@@ -77,23 +94,28 @@ class Dir(_SubFSWrapper):
 
 class Store:
 
-  def __init__(self, path: str):
-    self.fs = fs.open_fs(path)
+  def __init__(self, path: str, create_if_missing: bool):
+    self.fs = fs.open_fs(path, create=create_if_missing)
     self.path = path
+
+  def __exit__(self):
+    self.close()
 
   def close(self) -> None:
     self.fs.close()
 
+  def isdir(self) -> bool:
+    return self.fs.isdir(".")
+
   def as_dir(self) -> Dir:
-    subfs = self.fs.opendir(".")
-    return Dir(subfs)
+    return Dir(self.fs)
 
-  def open_dir(self, path: str) -> Dir:
-    return self.as_dir.open_dir(path)
+  def as_file(self, create_if_missing: bool = False) -> File:
+    return File(self.fs, create_if_missing)
 
-  def open_file(self, path: str) -> File:
-    return self.as_dir.open_file(path)
+  def is_high_latency(self) -> bool:
+    return self.path.startswith(_GCS_PATH_PREFIX)
 
 
-def create_store(path: str) -> Store:
-  return Store(path)
+def create_store(path: str, create_if_missing: bool = False) -> Store:
+  return Store(path, create_if_missing)

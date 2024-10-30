@@ -23,7 +23,7 @@ from stats.db import Db
 from stats.importer import Importer
 from stats.nodes import Nodes
 from stats.reporter import FileImportReporter
-from util.filehandler import FileHandler
+from util.filesystem import File
 
 from util import dc_client as dc
 
@@ -32,15 +32,14 @@ class ObservationsImporter(Importer):
   """Imports a single observations input file.
     """
 
-  def __init__(self, input_fh: FileHandler, db: Db,
-               debug_resolve_fh: FileHandler, reporter: FileImportReporter,
-               nodes: Nodes) -> None:
-    self.input_fh = input_fh
+  def __init__(self, input_file: File, db: Db, debug_resolve_file: File,
+               reporter: FileImportReporter, nodes: Nodes) -> None:
+    self.input_file = input_file
     self.db = db
-    self.debug_resolve_fh = debug_resolve_fh
+    self.debug_resolve_file = debug_resolve_file
     self.reporter = reporter
     self.nodes = nodes
-    self.input_file_name = self.input_fh.basename()
+    self.input_file_name = self.input_file.basename()
     self.config = nodes.config
     self.entity_type = self.config.entity_type(self.input_file_name)
     self.ignore_columns = self.config.ignore_columns(self.input_file_name)
@@ -71,7 +70,7 @@ class ObservationsImporter(Importer):
     # - Set 1st column (i.e. the entity column) to type str (so that geoIds like "01" are not treated as ints and converted to 1)
     # - Strip leading whitespaces
     # - Treat comma as a thousands separator
-    self.df = pd.read_csv(self.input_fh.read_string_io(),
+    self.df = pd.read_csv(self.input_file.read_string_io(),
                           dtype={0: str},
                           skipinitialspace=True,
                           thousands=",")
@@ -262,6 +261,5 @@ class ObservationsImporter(Importer):
   def _write_debug_csvs(self) -> None:
     if self.debug_resolve_df is not None:
       logging.info("Writing resolutions (for debugging) to: %s",
-                   self.debug_resolve_fh)
-      self.debug_resolve_fh.write_string(
-          self.debug_resolve_df.to_csv(index=False))
+                   self.debug_resolve_file.path)
+      self.debug_resolve_file.write(self.debug_resolve_df.to_csv(index=False))

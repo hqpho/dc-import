@@ -22,7 +22,7 @@ from stats.nl_constants import CUSTOM_EMBEDDINGS_INDEX
 from stats.nl_constants import CUSTOM_MODEL
 from stats.nl_constants import CUSTOM_MODEL_PATH
 import stats.schema_constants as sc
-from util.filehandler import FileHandler
+from util.filesystem import Dir
 import yaml
 
 _DCID_COL = "dcid"
@@ -35,16 +35,16 @@ _SENTENCES_FILE = "sentences.csv"
 _CUSTOM_CATALOG_YAML = "custom_catalog.yaml"
 
 
-def generate_nl_sentences(triples: list[Triple], nl_dir_fh: FileHandler):
+def generate_nl_sentences(triples: list[Triple], nl_dir: Dir):
   """Generates NL sentences based on name and searchDescription triples.
 
   This method should only be called for triples of types for which NL sentences
   should be generated. Currently it is StatisticalVariable and Topic.
 
-  This method does not do the type checks itself and the onus is on the caller 
+  This method does not do the type checks itself and the onus is on the caller
   to filter triples.
 
-  The dcids and sentences are written to a CSV using the specified FileHandler
+  The dcids and sentences are written to a CSV using the specified File.
   """
 
   dcid2candidates: dict[str, SentenceCandidates] = {}
@@ -62,20 +62,18 @@ def generate_nl_sentences(triples: list[Triple], nl_dir_fh: FileHandler):
 
   dataframe = pd.DataFrame(rows)
 
-  sentences_fh = nl_dir_fh.make_file(_SENTENCES_FILE)
-  logging.info("Writing %s NL sentences to: %s", dataframe.size, sentences_fh)
-  sentences_fh.write_string(dataframe.to_csv(index=False))
+  sentences_file = nl_dir.open_file(_SENTENCES_FILE)
+  logging.info("Writing %s NL sentences to: %s", dataframe.size, sentences_file)
+  sentences_file.write(dataframe.to_csv(index=False))
 
-  # The trailing "/" is used by the file handler to create a directory.
-  embeddings_dir_fh = nl_dir_fh.make_file(f"{_EMBEDDINGS_DIR}/")
-  embeddings_dir_fh.make_dirs()
-  embeddings_fh = embeddings_dir_fh.make_file(_EMBEDDINGS_FILE)
-  catalog_fh = embeddings_dir_fh.make_file(_CUSTOM_CATALOG_YAML)
-  catalog_dict = _catalog_dict(nl_dir_fh.path, embeddings_fh.path)
+  embeddings_dir = nl_dir.open_dir(_EMBEDDINGS_DIR)
+  embeddings_file = embeddings_dir.open_file(_EMBEDDINGS_FILE)
+  catalog_file = embeddings_dir.open_file(_CUSTOM_CATALOG_YAML)
+  catalog_dict = _catalog_dict(nl_dir.path, embeddings_file.path)
   catalog_yaml = yaml.safe_dump(catalog_dict)
-  logging.info("Writing custom catalog to path %s:\n%s", catalog_fh,
+  logging.info("Writing custom catalog to path %s:\n%s", catalog_file,
                catalog_yaml)
-  catalog_fh.write_string(catalog_yaml)
+  catalog_file.write(catalog_yaml)
 
 
 def _catalog_dict(nl_dir: str, embeddings_path: str) -> dict:

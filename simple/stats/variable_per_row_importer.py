@@ -23,7 +23,7 @@ from stats.db import Db
 from stats.importer import Importer
 from stats.nodes import Nodes
 from stats.reporter import FileImportReporter
-from util.filehandler import FileHandler
+from util.filesystem import File
 
 from util import dc_client as dc
 
@@ -49,15 +49,15 @@ class VariablePerRowImporter(Importer):
   This is in contrast to the ObservationsImporter where variables are specified in columns.
 
   Currently this importer only writes observations and no entities.
-  It also does not resolve any entities and expects all entities to be pre-resolved. 
+  It also does not resolve any entities and expects all entities to be pre-resolved.
     """
 
-  def __init__(self, input_fh: FileHandler, db: Db,
-               reporter: FileImportReporter, nodes: Nodes) -> None:
-    self.input_fh = input_fh
+  def __init__(self, input_file: File, db: Db, reporter: FileImportReporter,
+               nodes: Nodes) -> None:
+    self.input_file = input_file
     self.db = db
     self.reporter = reporter
-    self.input_file_name = self.input_fh.basename()
+    self.input_file_name = self.input_file.basename()
     self.nodes = nodes
     self.config = nodes.config
     # Reassign after reading CSV.
@@ -80,7 +80,7 @@ class VariablePerRowImporter(Importer):
       raise e
 
   def _read_csv(self) -> None:
-    self.reader = DictReader(self.input_fh.read_string_io())
+    self.reader = DictReader(self.input_file.read_string_io())
 
   def _map_columns(self):
     config_mappings = self.config.column_mappings(self.input_file_name)

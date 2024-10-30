@@ -22,26 +22,26 @@ from stats.db import Db
 from stats.importer import Importer
 from stats.nodes import Nodes
 from stats.reporter import FileImportReporter
-from util.filehandler import FileHandler
+from util.filesystem import File
 
 
 class EntitiesImporter(Importer):
   """Imports a single entities input file.
 
-  Key behaviors at this time: 
+  Key behaviors at this time:
   - All un-ignored columns will be encoded as property triples.
   - If an id column was configured, it will be used as the entity dcid. Else a new dcid will be generated for each entity.
   - Columns specified as entity columns will be encoded as object_id in the triples tables. Others will be encoded as object_value.
     + Currently this importer does not resolve any entities and all entities are assumed to be pre-resolved into dcids.
     """
 
-  def __init__(self, input_fh: FileHandler, db: Db,
-               reporter: FileImportReporter, nodes: Nodes) -> None:
-    self.input_fh = input_fh
+  def __init__(self, input_file: File, db: Db, reporter: FileImportReporter,
+               nodes: Nodes) -> None:
+    self.input_file = input_file
     self.db = db
     self.reporter = reporter
     self.nodes = nodes
-    self.input_file_name = self.input_fh.basename()
+    self.input_file_name = self.input_file.basename()
     self.config = nodes.config
     self.ignore_columns = self.config.ignore_columns(self.input_file_name)
     self.provenance = self.nodes.provenance(self.input_file_name).id
