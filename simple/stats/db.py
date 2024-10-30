@@ -23,6 +23,7 @@ import sqlite3
 import tempfile
 from typing import Any
 
+import fs.copy
 from google.cloud.sql.connector.connector import Connector
 import pandas as pd
 from pymysql.connections import Connection
@@ -32,8 +33,7 @@ from stats.data import Observation
 from stats.data import STAT_VAR_GROUP
 from stats.data import STATISTICAL_VARIABLE
 from stats.data import Triple
-from util.filehandler import create_file_handler
-from util.filehandler import is_gcs_path
+from util.filesystem import create_store
 
 FIELD_DB_TYPE = "type"
 FIELD_DB_PARAMS = "params"
@@ -236,8 +236,8 @@ class MainDcDb(Db):
     assert db_params
     assert MAIN_DC_OUTPUT_DIR in db_params
 
-    self.output_dir_fh = create_file_handler(db_params[MAIN_DC_OUTPUT_DIR],
-                                             is_dir=True)
+    self.output_store = create_store(db_params[MAIN_DC_OUTPUT_DIR])
+    self.output_dir = self.output_store.as_dir()
     # dcid to node dict
     self.nodes: dict[str, McfNode] = {}
 
@@ -252,8 +252,7 @@ class MainDcDb(Db):
     # Provenance is specified differently for main dc.
     # TODO: Include obs properties in main DC output.
     df = df.drop(columns=["provenance", "properties"])
-    self.output_dir_fh.make_file(input_file_name).write_string(
-        df.to_csv(index=False))
+    self.output_dir.open_file(input_file_name).write(df.to_csv(index=False))
 
   def insert_import_info(self, status: ImportStatus):
     # No-op for now.
@@ -264,11 +263,13 @@ class MainDcDb(Db):
     filtered = filter(lambda node: node.node_type in MCF_NODE_TYPES_ALLOWLIST,
                       self.nodes.values())
     mcf = "\n\n".join(map(lambda node: node.to_mcf(), filtered))
-    self.output_dir_fh.make_file(SCHEMA_MCF_FILE_NAME).write_string(mcf)
+    self.output_dir.open_file(SCHEMA_MCF_FILE_NAME).write(mcf)
 
     # TMCF
-    self.output_dir_fh.make_file(OBSERVATIONS_TMCF_FILE_NAME).write_string(
+    self.output_dir.open_file(OBSERVATIONS_TMCF_FILE_NAME).write(
         OBSERVATIONS_TMCF)
+
+    self.output_store.close()
 
     # Not supported for main DC at this time.
     def select_triples_by_subject_type(self, type_of: str) -> list[Triple]:
@@ -385,15 +386,23 @@ class SqliteDbEngine(DbEngine):
     assert SQLITE_DB_FILE_PATH in db_params
 
     self.db_file_path = db_params[SQLITE_DB_FILE_PATH]
-    # If file path is a GCS path, we create the DB in a local temp file
-    # and upload to GCS on commit.
-    self.local_db_file_path: str = self.db_file_path
-    if is_gcs_path(self.db_file_path):
-      self.local_db_file_path = tempfile.NamedTemporaryFile().name
+    self.db_perm_store = create_store(self.db_file_path, create_if_missing=True)
 
-    logging.info("Connecting to SQLite: %s", self.local_db_file_path)
-    self.connection = sqlite3.connect(self.local_db_file_path)
-    logging.info("Connected to SQLite: %s", self.local_db_file_path)
+    # If file storage is high-latency, cache to a local temp file and
+    # copy over on commit.
+    if self.db_perm_store.is_high_latency():
+      logging.info(
+          f"Using temp local db since path is high-latency: {self.db_file_path}"
+      )
+      self.db_temp_store = create_store(tempfile.NamedTemporaryFile().name)
+      fs.copy.copy_file(self.db_perm_store.fs, ".", self.db_temp_store.fs, ".")
+
+    self.db_file = self.db_temp_store.as_file(
+    ) if self.db_temp_store else self.db_perm_store.as_file()
+
+    logging.info("Connecting to SQLite: %s", self.db_file.path)
+    self.connection = sqlite3.connect(self.db_file.openbin())
+    logging.info("Connected to SQLite: %s", self.db_file.path)
 
     self.cursor = self.connection.cursor()
 
@@ -458,13 +467,13 @@ class SqliteDbEngine(DbEngine):
     self._create_indexes()
     self.connection.commit()
     self.connection.close()
-    # Copy file if local and actual DB file paths are different.
-    if self.local_db_file_path != self.db_file_path:
-      local_db = create_file_handler(self.local_db_file_path,
-                                     is_dir=False).read_bytes()
-      logging.info("Writing to sqlite db: %s (%s bytes)",
-                   self.local_db_file_path, len(local_db))
-      create_file_handler(self.db_file_path, is_dir=False).write_bytes(local_db)
+
+    if self.db_temp_store:
+      logging.info("Writing sqlite db to permanent storage: %s (%s bytes)")
+      fs.copy.copy_file(self.db_temp_store.fs, ".", self.db_perm_store.fs, ".")
+      self.db_temp_store.close()
+
+    self.db_perm_store.close()
 
 
 # Parameters needed to connect to a Cloud SQL instance.
