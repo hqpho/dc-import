@@ -20,14 +20,14 @@ import re
 import fs
 import fs.base
 import fs.path as fspath
+from fs_gcsfs import GCSFS
 
-_GCS_PATH_PREFIX = "gs://"
+_GCS_PATH_PREFIX = "gs:"
 
 
 class _FSWrapper():
 
   def __init__(self, fs: fs.base.FS, parent_path: str):
-    # TODO Maybe put Store here instead?
     self.fs = fs
     self.parent_path = parent_path
 
@@ -55,8 +55,10 @@ class File(_FSWrapper):
   def full_path(self) -> str:
     return fspath.join(self.parent_path, self.path)
 
-  def syspath(self) -> str:
-    return self.fs.getsyspath(self.path)
+  def syspath(self) -> str | None:
+    if self.fs.hassyspath(self.path):
+      return self.fs.getsyspath(self.path)
+    return None
 
   def match(self, pattern: str) -> bool:
     allow_partial_match = not pattern.startswith("/")
@@ -120,7 +122,6 @@ class Dir(_FSWrapper):
     return self.parent_path
 
   def open_dir(self, path: str) -> "Dir":
-    # TODO make create_if_missing consistent
     if not self.fs.exists(path):
       self.fs.makedirs(path)
     if not self.fs.isdir(path):
@@ -140,13 +141,6 @@ class Dir(_FSWrapper):
       files.append(self.open_file(fspath.relpath(abspath)))
     return files
 
-  # def find_matching(self, patterns: list[str]) -> list[File]:
-  #   files = []
-  #   for path in self.fs.walk.files():
-  #     if self.fs.match_glob(patterns, path):
-  #       files.append(self.open_file(path))
-  #   return files
-
 
 class Store:
 
@@ -159,6 +153,7 @@ class Store:
         self.fs = fs.open_fs(path, create=create_if_missing)
         self._dir = Dir(self.fs, parent_path=self.path)
         self._isdir = True
+        dir_path = path
       except fs.errors.CreateFailed:
         # Fall back to treating the path as a file path.
         treat_as_file = True
@@ -172,6 +167,9 @@ class Store:
                         file_name,
                         parent_path=dir_path,
                         create_if_missing=create_if_missing)
+
+    if self.path.startswith(_GCS_PATH_PREFIX):
+      _fix_gcsfs_storage(self.fs)
 
   def __enter__(self):
     return self
@@ -199,3 +197,40 @@ def create_store(path: str,
                  create_if_missing: bool = False,
                  treat_as_file: bool = False) -> Store:
   return Store(path, create_if_missing, treat_as_file)
+
+
+def _fix_gcsfs_storage(fs: GCSFS) -> None:
+  """Utility function that walks the entire `root_path` and makes sure that all intermediate directories are correctly marked with empty blobs.
+
+  As GCS is no real file system but only a key-value store, there is also no concept of folders. S3FS and GCSFS overcome this limitation by adding
+  empty files with the name "<path>/" every time a directory is created, see https://fs-gcsfs.readthedocs.io/en/latest/#limitations.
+
+  This is the same as GCSFS.fix_storage() but with a fix for an infinite loop when root_path does not end with a slash.
+  """
+  names = [
+      blob.name
+      for blob in fs.bucket.list_blobs(prefix=fspath.forcedir(fs.root_path))
+  ]
+  marked_dirs = set()
+  all_dirs = set()
+
+  for name in names:
+    # If a blob ends with a slash, it's a directory marker
+    if name.endswith("/"):
+      marked_dirs.add(fspath.dirname(name))
+
+    name = fspath.dirname(name)
+    while name != fs.root_path:
+      all_dirs.add(name)
+      name = fspath.dirname(name)
+
+  if fspath.forcedir(fs.root_path) != "/":
+    all_dirs.add(fs.root_path)
+
+  unmarked_dirs = all_dirs.difference(marked_dirs)
+
+  if len(unmarked_dirs) > 0:
+    for unmarked_dir in unmarked_dirs:
+      dir_name = fspath.forcedir(unmarked_dir)
+      blob = fs.bucket.blob(dir_name)
+      blob.upload_from_string(b"")

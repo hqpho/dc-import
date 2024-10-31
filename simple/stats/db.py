@@ -388,7 +388,7 @@ class SqliteDbEngine(DbEngine):
     self.db_temp_store = None
     self.db_final_file = None
     self.db_file = db_params[SQLITE_DB_FILE]
-    if not self.db_file.syspath():
+    if self.db_file.syspath() is None:
       logging.info("Copying DB to local storage from %s",
                    self.db_file.full_path())
       # Copy to disk
