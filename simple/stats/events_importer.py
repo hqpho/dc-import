@@ -171,7 +171,7 @@ class EventsImporter(Importer):
     # Add event type node - it will be written to DB later.
     # This is to avoid duplicate event types in scenarios where events of the same type
     # are spread across files.
-    self.nodes.event_type(self.event_type)
+    self.nodes.event_type(self.event_type, self.input_file)
 
     # All property columns would've been renamed to their dcids by now.
     # So use the id column's dcid as the id column name.

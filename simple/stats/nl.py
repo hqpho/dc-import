@@ -23,6 +23,7 @@ from stats.nl_constants import CUSTOM_MODEL
 from stats.nl_constants import CUSTOM_MODEL_PATH
 import stats.schema_constants as sc
 from util.filesystem import Dir
+from util.filesystem import File
 import yaml
 
 _DCID_COL = "dcid"
@@ -69,22 +70,21 @@ def generate_nl_sentences(triples: list[Triple], nl_dir: Dir):
   embeddings_dir = nl_dir.open_dir(_EMBEDDINGS_DIR)
   embeddings_file = embeddings_dir.open_file(_EMBEDDINGS_FILE)
   catalog_file = embeddings_dir.open_file(_CUSTOM_CATALOG_YAML)
-  # TODO Maybe make dir.full_path() just be .path?
-  catalog_dict = _catalog_dict(nl_dir.full_path(), embeddings_file.path)
+  catalog_dict = _catalog_dict(nl_dir, embeddings_file)
   catalog_yaml = yaml.safe_dump(catalog_dict)
   logging.info("Writing custom catalog to path %s:\n%s", catalog_file,
                catalog_yaml)
   catalog_file.write(catalog_yaml)
 
 
-def _catalog_dict(nl_dir: str, embeddings_path: str) -> dict:
+def _catalog_dict(nl_dir: Dir, embeddings_file: File) -> dict:
   return {
       "version": "1",
       "indexes": {
           CUSTOM_EMBEDDINGS_INDEX: {
               "store_type": "MEMORY",
-              "source_path": nl_dir,
-              "embeddings_path": embeddings_path,
+              "source_path": nl_dir.full_path(),
+              "embeddings_path": embeddings_file.full_path(),
               "model": CUSTOM_MODEL
           },
       },

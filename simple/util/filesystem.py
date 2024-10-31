@@ -93,7 +93,8 @@ class Dir(_FSWrapper):
       self.fs.makedirs(path)
     if not self.fs.isdir(path):
       raise ValueError(f"{self.full_path()} exists and is not a directory")
-    return Dir(self.fs.opendir(path), parent_path=self.full_path())
+    return Dir(self.fs.opendir(path),
+               parent_path=fspath.join(self.full_path(), path))
 
   def open_file(self, path: str, create_if_missing: bool = True) -> File:
     if self.fs.isdir(path):

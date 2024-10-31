@@ -75,7 +75,6 @@ class Runner:
 
     # "Special" file handlers.
     # i.e. if files of these types are present, they are handled in specific ways.
-    # self.special_handlers: dict[str, FileHandler] = {}
     self.special_files: dict[str, File] = {}
     self.svg_specialized_names: ParentSVG2ChildSpecializedNames = {}
 

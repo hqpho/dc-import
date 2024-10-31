@@ -32,6 +32,7 @@ from stats.db import ImportStatus
 from tests.stats.test_util import compare_files
 from tests.stats.test_util import is_write_mode
 from tests.stats.test_util import read_full_db_from_file
+from util.filesystem import create_store
 
 _TEST_DATA_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)),
                               "test_data", "db")
@@ -121,7 +122,8 @@ class TestDb(unittest.TestCase):
       db_file_path = os.path.join(temp_dir, "datacommons.db")
       db = create_and_update_db(create_sqlite_config(db_file_path))
       db.insert_triples(_TRIPLES)
-      db.insert_observations(_OBSERVATIONS, "foo.csv")
+      foo_file = create_store(temp_dir).as_dir().open_file("foo.csv")
+      db.insert_observations(_OBSERVATIONS, foo_file)
       db.insert_key_value(_KEY_VALUE[0], _KEY_VALUE[1])
       db.insert_import_info(status=ImportStatus.SUCCESS)
 
@@ -180,7 +182,8 @@ class TestDb(unittest.TestCase):
       db.maybe_clear_before_import()
 
       db.insert_triples(_TRIPLES)
-      db.insert_observations(_OBSERVATIONS, "foo.csv")
+      foo_file = create_store(temp_dir).as_dir().open_file("foo.csv")
+      db.insert_observations(_OBSERVATIONS, foo_file)
       db.insert_key_value(_KEY_VALUE[0], _KEY_VALUE[1])
       db.insert_import_info(status=ImportStatus.SUCCESS)
 
@@ -210,7 +213,8 @@ class TestDb(unittest.TestCase):
       db.maybe_clear_before_import()
 
       db.insert_triples(_TRIPLES)
-      db.insert_observations(_OBSERVATIONS, "foo.csv")
+      foo_file = create_store(temp_dir).as_dir().open_file("foo.csv")
+      db.insert_observations(_OBSERVATIONS, foo_file)
       db.insert_key_value(_KEY_VALUE[0], _KEY_VALUE[1])
       db.insert_import_info(status=ImportStatus.SUCCESS)
 
@@ -233,7 +237,7 @@ class TestDb(unittest.TestCase):
     In write mode, replaces the goldens instead.
     """
     with tempfile.TemporaryDirectory() as temp_dir:
-      observations_file = os.path.join(temp_dir, "observations.csv")
+      observations_file_path = os.path.join(temp_dir, "observations.csv")
       expected_observations_file = os.path.join(_EXPECTED_DIR,
                                                 "observations.csv")
       tmcf_file = os.path.join(temp_dir, "observations.tmcf")
@@ -243,17 +247,20 @@ class TestDb(unittest.TestCase):
 
       db = create_and_update_db(create_main_dc_config(temp_dir))
       db.insert_triples(_TRIPLES)
-      db.insert_observations(_OBSERVATIONS, "observations.csv")
+      observations_file = create_store(observations_file_path,
+                                       create_if_missing=True,
+                                       treat_as_file=True).as_file()
+      db.insert_observations(_OBSERVATIONS, observations_file)
       db.insert_import_info(status=ImportStatus.SUCCESS)
       db.commit_and_close()
 
       if is_write_mode():
-        shutil.copy(observations_file, expected_observations_file)
+        shutil.copy(observations_file_path, expected_observations_file)
         shutil.copy(tmcf_file, expected_tmcf_file)
         shutil.copy(mcf_file, expected_mcf_file)
         return
 
-      compare_files(self, observations_file, expected_observations_file)
+      compare_files(self, observations_file_path, expected_observations_file)
       compare_files(self, tmcf_file, expected_tmcf_file)
       compare_files(self, mcf_file, expected_mcf_file)
 
