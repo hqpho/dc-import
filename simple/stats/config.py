@@ -180,9 +180,9 @@ class Config:
   def special_files(self) -> dict[str, str]:
     special_files: dict[str, str] = {}
     for special_file_type in constants.SPECIAL_FILE_TYPES:
-      special_file = self.data.get(special_file_type, "")
-      if special_file:
-        special_files[special_file] = special_file_type
+      special_file_name = self.data.get(special_file_type, "")
+      if special_file_name:
+        special_files[special_file_type] = special_file_name
     return special_files
 
   def generate_topics(self) -> bool:

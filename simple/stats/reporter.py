@@ -84,7 +84,7 @@ class ImportReporter:
     self.data["error"] = error
 
   def get_file_reporter(self, import_file: File):
-    return self.import_files[import_file.full_path()]
+    return self.file_reporters_by_full_path[import_file.full_path()]
 
   def recompute_progress(self):
     self._compute_all_done()
@@ -115,11 +115,11 @@ class ImportReporter:
       report["startTime"] = str(self.start_time)
       report["lastUpdate"] = str(self.last_update)
 
-    import_files = {}
-    for import_file, import_file_reporter in self.import_files.items():
-      import_files[import_file] = import_file_reporter.json()
+    import_files_output = {}
+    for full_path, file_reporter in self.file_reporters_by_full_path.items():
+      import_files_output[full_path] = file_reporter.json()
 
-    report["importFiles"] = import_files
+    report["importFiles"] = import_files_output
 
     return report
 

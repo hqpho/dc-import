@@ -388,22 +388,26 @@ class SqliteDbEngine(DbEngine):
     assert SQLITE_DB_FILE_PATH in db_params
 
     self.db_file_path = db_params[SQLITE_DB_FILE_PATH]
-    self.db_perm_store = create_store(self.db_file_path, create_if_missing=True)
+    self.db_perm_store = create_store(self.db_file_path,
+                                      create_if_missing=True,
+                                      treat_as_file=True)
+    self.db_temp_store = None
 
     # If file storage is high-latency, cache to a local temp file and
     # copy over on commit.
+    # TODO Copy if it's not an OSFS no matter what.
     if self.db_perm_store.is_high_latency():
       logging.info(
           f"Using temp local db since path is high-latency: {self.db_file_path}"
       )
       self.db_temp_store = create_store(tempfile.NamedTemporaryFile().name)
-      fs.copy.copy_file(self.db_perm_store.fs, ".", self.db_temp_store.fs, ".")
+      self.db_perm_store.as_file().copy_to(self.db_temp_store.as_file())
 
     self.db_file = self.db_temp_store.as_file(
     ) if self.db_temp_store else self.db_perm_store.as_file()
 
     logging.info("Connecting to SQLite: %s", self.db_file.path)
-    self.connection = sqlite3.connect(self.db_file.openbin())
+    self.connection = sqlite3.connect(self.db_file.full_path())
     logging.info("Connected to SQLite: %s", self.db_file.path)
 
     self.cursor = self.connection.cursor()
@@ -472,7 +476,7 @@ class SqliteDbEngine(DbEngine):
 
     if self.db_temp_store:
       logging.info("Writing sqlite db to permanent storage: %s (%s bytes)")
-      fs.copy.copy_file(self.db_temp_store.fs, ".", self.db_perm_store.fs, ".")
+      self.db_temp_store.as_file().copy_to(self.db_perm_store.as_file())
       self.db_temp_store.close()
 
     self.db_perm_store.close()

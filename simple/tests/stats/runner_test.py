@@ -16,7 +16,6 @@ import json
 import os
 from pathlib import Path
 import shutil
-import sqlite3
 import tempfile
 import unittest
 from unittest.mock import MagicMock
@@ -92,9 +91,9 @@ def _test_runner(test: unittest.TestCase,
         dc_client.get_property_of_entities = MagicMock(
             return_value=json.load(f))
 
-    Runner(config_file=config_path,
-           input_dir=input_dir,
-           output_dir=temp_dir,
+    Runner(config_file_path=config_path,
+           input_dir_path=input_dir,
+           output_dir_path=temp_dir,
            mode=run_mode).run()
 
     write_triples(db_path, output_triples_path)

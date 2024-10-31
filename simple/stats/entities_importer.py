@@ -71,7 +71,7 @@ class EntitiesImporter(Importer):
     # Read CSVs with the following behaviors:
     # - Strip leading whitespaces
     # - Treat comma as a thousands separator
-    self.df = pd.read_csv(self.input_fh.read_string_io(),
+    self.df = pd.read_csv(self.input_file.read_string_io(),
                           skipinitialspace=True,
                           thousands=",")
     logging.info("Read %s rows.", self.df.index.size)

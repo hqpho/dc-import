@@ -52,7 +52,7 @@ class File(_FSWrapper):
     return fs.path.basename(self.path)
 
   def full_path(self) -> str:
-    return self.parent_path + self.path
+    return fspath.join(self.parent_path, self.path)
 
   def match(self, patterns: list[str]) -> bool:
     return self.fs.match(patterns, self.path)
@@ -72,14 +72,20 @@ class File(_FSWrapper):
   def read_string_io(self) -> io.StringIO:
     return io.StringIO(self.read())
 
-  def openbin(self) -> io.IOBase:
-    return self.fs.openbin(self.path)
+  def open(self) -> io.IOBase:
+    return self.fs.open(self.path, "w")
+
+  def copy_to(self, dest: "File"):
+    dest.writebytes(self.readbytes())
 
 
 class Dir(_FSWrapper):
 
   def __init__(self, fs: fs.base.FS, parent_path: str):
     super().__init__(fs, parent_path)
+
+  def full_path(self) -> str:
+    return self.parent_path
 
   def open_dir(self, path: str) -> "Dir":
     # TODO make create_if_missing consistent
@@ -89,7 +95,7 @@ class Dir(_FSWrapper):
       raise ValueError(f"{self.full_path()} exists and is not a directory")
     return Dir(self.fs.opendir(path), parent_path=self.full_path())
 
-  def open_file(self, path: str, create_if_missing: bool = False) -> File:
+  def open_file(self, path: str, create_if_missing: bool = True) -> File:
     if self.fs.isdir(path):
       raise ValueError(
           f"{self.full_path()} exists and is a directory, not a file")
@@ -97,8 +103,8 @@ class Dir(_FSWrapper):
 
   def all_files(self):
     files = []
-    for path in self.fs.walk.files():
-      files.append(self.open_file(path))
+    for abspath in self.fs.walk.files():
+      files.append(self.open_file(fspath.relpath(abspath)))
     return files
 
   # def find_matching(self, patterns: list[str]) -> list[File]:
@@ -111,31 +117,52 @@ class Dir(_FSWrapper):
 
 class Store:
 
-  def __init__(self, path: str, create_if_missing: bool):
-    self.fs = fs.open_fs(path, create=create_if_missing)
+  def __init__(self, path: str, create_if_missing: bool, treat_as_file: bool):
+
     self.path = path
 
-  def __exit__(self):
+    if not treat_as_file:
+      try:
+        self.fs = fs.open_fs(path, create=create_if_missing)
+        self._dir = Dir(self.fs, parent_path=self.path)
+        self._isdir = True
+      except fs.errors.CreateFailed:
+        # Fall back to treating the path as a file path.
+        treat_as_file = True
+
+    if treat_as_file:
+      self._isdir = False
+      dir_path = fspath.dirname(path)
+      file_name = fspath.basename(path)
+      self.fs = fs.open_fs(dir_path, create=create_if_missing)
+      self._file = File(self.fs,
+                        file_name,
+                        parent_path=dir_path,
+                        create_if_missing=create_if_missing)
+
+  def __enter__(self):
+    return self
+
+  def __exit__(self, exc_type, exc_value, traceback):
     self.close()
 
   def close(self) -> None:
     self.fs.close()
 
   def isdir(self) -> bool:
-    return self.fs.isdir(".")
+    return self._isdir
 
   def as_dir(self) -> Dir:
-    return Dir(self.fs, parent_path=self.path)
+    return self._dir
 
-  def as_file(self, create_if_missing: bool = False) -> File:
-    return File(self.fs,
-                ".",
-                parent_path=self.path,
-                create_if_missing=create_if_missing)
+  def as_file(self) -> File:
+    return self._file
 
   def is_high_latency(self) -> bool:
     return self.path.startswith(_GCS_PATH_PREFIX)
 
 
-def create_store(path: str, create_if_missing: bool = False) -> Store:
-  return Store(path, create_if_missing)
+def create_store(path: str,
+                 create_if_missing: bool = False,
+                 treat_as_file: bool = False) -> Store:
+  return Store(path, create_if_missing, treat_as_file)

@@ -99,8 +99,8 @@ class Runner:
       self.stores.append(input_store)
       self.input_stores.append(input_store)
 
-      config_file = self.input_store.as_dir().open_file(
-          constants.CONFIG_JSON_FILE_NAME)
+      config_file = input_store.as_dir().open_file(
+          constants.CONFIG_JSON_FILE_NAME, create_if_missing=False)
       # TODO Catch FileNotFoundError
       self.config = Config(data=json.loads(config_file.read()))
 
@@ -161,7 +161,7 @@ class Runner:
       return db_cfg
     logging.info("Using default DB settings.")
     return create_sqlite_config(
-        self.output_dir.open_file(constants.DB_FILE_NAME).path)
+        self.output_dir.open_file(constants.DB_FILE_NAME).full_path())
 
   def _run_imports_and_do_post_import_work(self):
     # (SQL only) Drop data in existing tables (except import metadata).
@@ -220,7 +220,7 @@ class Runner:
         constants.VERTICAL_SPECS_FILE_TYPE)
     if vertical_specs_file:
       logging.info("Loading vertical specs from: %s",
-                   vertical_specs_file.basename())
+                   vertical_specs_file.name())
       vertical_specs = stat_var_hierarchy_generator.load_vertical_specs(
           vertical_specs_file.read())
 
@@ -265,7 +265,7 @@ class Runner:
         # Already found this special file.
         continue
       file_name = self.special_file_names_by_type[file_type]
-      if file.match([f"/{file_name}"]):
+      if file.match([file_name]):
         self.special_files[file_type] = file
 
   def _run_all_data_imports(self):
@@ -287,22 +287,22 @@ class Runner:
         input_mcf_files.append(input_file)
 
     # Sort input files alphabetically.
-    input_csv_files.sort(key=lambda f: f.basename())
-    input_mcf_files.sort(key=lambda f: f.basename())
+    input_csv_files.sort(key=lambda f: f.name())
+    input_mcf_files.sort(key=lambda f: f.name())
 
-    self.reporter.report_started(import_files=list(
-        map(lambda f: f.basename(), input_csv_files + input_mcf_files)))
+    self.reporter.report_started(import_files=list(input_csv_files +
+                                                   input_mcf_files))
     for input_csv_file in input_csv_files:
       self._run_single_import(input_csv_file)
     for input_mcf_file in input_mcf_files:
       self._run_single_mcf_import(input_mcf_file)
 
   def _run_single_import(self, input_file: File):
-    logging.info("Importing file: %s", input_file.basename())
+    logging.info("Importing file: %s", input_file.name())
     self._create_importer(input_file).do_import()
 
   def _run_single_mcf_import(self, input_mcf_file: File):
-    logging.info("Importing MCF file: %s", input_mcf_file.basename())
+    logging.info("Importing MCF file: %s", input_mcf_file.name())
     self._create_mcf_importer(input_mcf_file, self.output_dir,
                               self.mode == RunMode.MAIN_DC).do_import()
 

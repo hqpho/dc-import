@@ -127,7 +127,7 @@ class TestConfig(unittest.TestCase):
     self.maxDiff = None
 
   def make_file(self, path: str) -> File:
-    return self.store.as_dir().open_file(path, create_if_missing=True)
+    return self.store.as_dir().open_file(path)
 
   def setUp(self):
     self.store = create_store("mem://")

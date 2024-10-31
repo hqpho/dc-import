@@ -69,7 +69,8 @@ def generate_nl_sentences(triples: list[Triple], nl_dir: Dir):
   embeddings_dir = nl_dir.open_dir(_EMBEDDINGS_DIR)
   embeddings_file = embeddings_dir.open_file(_EMBEDDINGS_FILE)
   catalog_file = embeddings_dir.open_file(_CUSTOM_CATALOG_YAML)
-  catalog_dict = _catalog_dict(nl_dir.path, embeddings_file.path)
+  # TODO Maybe make dir.full_path() just be .path?
+  catalog_dict = _catalog_dict(nl_dir.full_path(), embeddings_file.path)
   catalog_yaml = yaml.safe_dump(catalog_dict)
   logging.info("Writing custom catalog to path %s:\n%s", catalog_file,
                catalog_yaml)
