@@ -204,7 +204,7 @@ class Config:
   def _find_first_matching_config_key(self, input_file: File) -> str | None:
     for input_file_pattern in self._input_files_config.keys():
       # Match is relative to enclosing store.
-      if input_file.match([input_file_pattern]):
+      if input_file.match(input_file_pattern):
         return input_file_pattern
     return None
 

@@ -275,11 +275,11 @@ class TestConfig(unittest.TestCase):
     self.assertDictEqual(
         Config({
             "inputFiles": {
-                "to/*.csv": {
+                "/to/*.csv": {
                     "x": "y"
                 }
             }
-        })._per_file_config(self.foo_in_subdir), {}, "wrong partial subdir")
+        })._per_file_config(self.foo_in_subdir), {}, "wrong subdir")
     self.assertDictEqual(
         Config({
             "inputFiles": {

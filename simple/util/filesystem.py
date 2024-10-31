@@ -15,6 +15,7 @@
 in a platform-agnostic way."""
 
 import io
+import re
 
 import fs
 import fs.base
@@ -54,8 +55,36 @@ class File(_FSWrapper):
   def full_path(self) -> str:
     return fspath.join(self.parent_path, self.path)
 
-  def match(self, patterns: list[str]) -> bool:
-    return self.fs.match(patterns, self.path)
+  def syspath(self) -> str:
+    return self.fs.getsyspath(self.path)
+
+  def match(self, pattern: str) -> bool:
+    allow_partial_match = not pattern.startswith("/")
+    if not pattern.count("*"):
+      return (allow_partial_match and
+              self.name() == pattern) or self.path == pattern
+    else:
+      segments = pattern.split("/")
+      segments = [s.replace(".", r"\.") for s in segments]
+      regex_segments = []
+      for segment in segments:
+        if segment == "**":
+          # Match a variable level of dirs
+          regex_segments.append(".*")
+        elif segment == "*":
+          # Match a single level of dirs
+          regex_segments.append(r"[^\/]*")
+        else:
+          # Single wildcard as part of a pattern can be anything but a slash
+          regex_segment = segment.replace("*", r"[^\/]*")
+          regex_segments.append(regex_segment)
+
+      regex = (r"\/").join(regex_segments)
+      # re.search matches anywhere in the path,
+      # while re.match matches at the beginning.
+      return (allow_partial_match and
+              re.search(regex, self.path) is not None) or re.match(
+                  regex, self.path) is not None
 
   def read(self) -> str:
     return self.fs.readtext(self.path)
@@ -75,8 +104,11 @@ class File(_FSWrapper):
   def open(self) -> io.IOBase:
     return self.fs.open(self.path, "w")
 
+  def size(self) -> int:
+    return self.fs.getsize(self.path)
+
   def copy_to(self, dest: "File"):
-    dest.writebytes(self.readbytes())
+    dest.write_bytes(self.read_bytes())
 
 
 class Dir(_FSWrapper):

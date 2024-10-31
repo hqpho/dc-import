@@ -50,10 +50,13 @@ def _test_import(test: unittest.TestCase, test_name: str):
   with tempfile.TemporaryDirectory() as temp_dir:
     input_dir = os.path.join(_INPUT_DIR, test_name)
     expected_dir = os.path.join(_EXPECTED_DIR, test_name)
+    temp_store = create_store(temp_dir)
 
     input_path = os.path.join(input_dir, "input.csv")
     config_path = os.path.join(input_dir, "config.json")
-    db_path = os.path.join(temp_dir, f"{test_name}.db")
+    db_file_name = f"{test_name}.db"
+    db_path = os.path.join(temp_dir, db_file_name)
+    db_file = temp_store.as_dir().open_file(db_file_name)
 
     output_path = os.path.join(temp_dir, f"{test_name}.db.csv")
     expected_path = os.path.join(_EXPECTED_DIR, f"{test_name}.db.csv")
@@ -65,7 +68,7 @@ def _test_import(test: unittest.TestCase, test_name: str):
     with open(config_path) as config_file:
       config = Config(json.load(config_file))
 
-    db = create_and_update_db(create_sqlite_config(db_path))
+    db = create_and_update_db(create_sqlite_config(db_file))
     report_file = create_store(temp_dir).as_dir().open_file("report.json")
     reporter = FileImportReporter(input_path, ImportReporter(report_file))
     nodes = Nodes(config)

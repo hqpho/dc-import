@@ -30,7 +30,7 @@ from stats.db import create_and_update_db
 from stats.db import create_main_dc_config
 from stats.db import create_sqlite_config
 from stats.db import get_cloud_sql_config_from_env
-from stats.db import get_sqlite_config_from_env
+from stats.db import get_sqlite_path_from_env
 from stats.db import ImportStatus
 from stats.entities_importer import EntitiesImporter
 from stats.events_importer import EventsImporter
@@ -94,6 +94,7 @@ class Runner:
 
     # Input dir driven.
     else:
+      # TODO If output dir overlaps with input dir, make sure it gets excluded.
       input_store = create_store(input_dir_path)
       self.stores.append(input_store)
       self.input_stores.append(input_store)
@@ -140,6 +141,12 @@ class Runner:
 
       # Report done.
       self.reporter.report_done()
+
+      # Close file storage.
+      for store in self.stores:
+        store.close()
+      logging.info("File storage closed.")
+
     except Exception as e:
       logging.exception("Error updating stats")
       self.reporter.report_failure(error=str(e))
@@ -154,13 +161,18 @@ class Runner:
     if db_cfg:
       logging.info("Using Cloud SQL settings from env.")
       return db_cfg
-    db_cfg = get_sqlite_config_from_env()
-    if db_cfg:
+    sqlite_path_from_env = get_sqlite_path_from_env()
+    if sqlite_path_from_env:
       logging.info("Using SQLite settings from env.")
-      return db_cfg
-    logging.info("Using default DB settings.")
-    return create_sqlite_config(
-        self.output_dir.open_file(constants.DB_FILE_NAME).full_path())
+      sqlite_env_store = create_store(sqlite_path_from_env,
+                                      create_if_missing=True,
+                                      treat_as_file=True)
+      self.stores.append(sqlite_env_store)
+      sqlite_file = sqlite_env_store.as_file()
+    else:
+      logging.info("Using default SQLite settings.")
+      sqlite_file = self.output_dir.open_file(constants.DB_FILE_NAME)
+    return create_sqlite_config(sqlite_file)
 
   def _run_imports_and_do_post_import_work(self):
     # (SQL only) Drop data in existing tables (except import metadata).
@@ -264,7 +276,7 @@ class Runner:
         # Already found this special file.
         continue
       file_name = self.special_file_names_by_type[file_type]
-      if file.match([file_name]):
+      if file.match(file_name):
         self.special_files[file_type] = file
 
   def _run_all_data_imports(self):
@@ -280,9 +292,9 @@ class Runner:
 
     for input_file in input_files:
       self._check_if_special_file(input_file)
-      if input_file.match(["*.csv"]):
+      if input_file.match("*.csv"):
         input_csv_files.append(input_file)
-      if input_file.match(["*.mcf"]):
+      if input_file.match("*.mcf"):
         input_mcf_files.append(input_file)
 
     # Sort input files alphabetically.

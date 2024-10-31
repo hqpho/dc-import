@@ -27,7 +27,7 @@ from stats.db import create_and_update_db
 from stats.db import create_main_dc_config
 from stats.db import create_sqlite_config
 from stats.db import get_cloud_sql_config_from_env
-from stats.db import get_sqlite_config_from_env
+from stats.db import get_sqlite_path_from_env
 from stats.db import ImportStatus
 from tests.stats.test_util import compare_files
 from tests.stats.test_util import is_write_mode
@@ -119,10 +119,13 @@ class TestDb(unittest.TestCase):
     Compares resulting DB contents with expected values.
     """
     with tempfile.TemporaryDirectory() as temp_dir:
-      db_file_path = os.path.join(temp_dir, "datacommons.db")
-      db = create_and_update_db(create_sqlite_config(db_file_path))
+      temp_store = create_store(temp_dir)
+      db_file_name = "datacommons.db"
+      db_file_path = os.path.join(temp_dir, db_file_name)
+      db_file = temp_store.as_dir().open_file(db_file_name)
+      db = create_and_update_db(create_sqlite_config(db_file))
       db.insert_triples(_TRIPLES)
-      foo_file = create_store(temp_dir).as_dir().open_file("foo.csv")
+      foo_file = temp_store.as_dir().open_file("foo.csv")
       db.insert_observations(_OBSERVATIONS, foo_file)
       db.insert_key_value(_KEY_VALUE[0], _KEY_VALUE[1])
       db.insert_import_info(status=ImportStatus.SUCCESS)
@@ -153,10 +156,13 @@ class TestDb(unittest.TestCase):
     without modifying existing data.
     """
     with tempfile.TemporaryDirectory() as temp_dir:
-      db_file_path = os.path.join(temp_dir, "datacommons.db")
+      temp_store = create_store(temp_dir)
+      db_file_name = "datacommons.db"
+      db_file_path = os.path.join(temp_dir, db_file_name)
+      db_file = temp_store.as_dir().open_file(db_file_name)
       self._seed_db_from_input(db_file_path, "sqlite_old_schema_populated.sql")
 
-      db = create_and_update_db(create_sqlite_config(db_file_path))
+      db = create_and_update_db(create_sqlite_config(db_file))
       db.commit_and_close()
 
       self._verify_db_contents(
@@ -174,15 +180,18 @@ class TestDb(unittest.TestCase):
     database has an old schema.
     """
     with tempfile.TemporaryDirectory() as temp_dir:
-      db_file_path = os.path.join(temp_dir, "datacommons.db")
+      temp_store = create_store(temp_dir)
+      db_file_name = "datacommons.db"
+      db_file_path = os.path.join(temp_dir, db_file_name)
+      db_file = temp_store.as_dir().open_file(db_file_name)
       self._seed_db_from_input(db_file_path, "sqlite_old_schema_populated.sql")
 
-      db = create_and_update_db(create_sqlite_config(db_file_path))
+      db = create_and_update_db(create_sqlite_config(db_file))
 
       db.maybe_clear_before_import()
 
       db.insert_triples(_TRIPLES)
-      foo_file = create_store(temp_dir).as_dir().open_file("foo.csv")
+      foo_file = temp_store.as_dir().open_file("foo.csv")
       db.insert_observations(_OBSERVATIONS, foo_file)
       db.insert_key_value(_KEY_VALUE[0], _KEY_VALUE[1])
       db.insert_import_info(status=ImportStatus.SUCCESS)
@@ -204,16 +213,19 @@ class TestDb(unittest.TestCase):
     all tables except the imports table.
     """
     with tempfile.TemporaryDirectory() as temp_dir:
-      db_file_path = os.path.join(temp_dir, "datacommons.db")
+      temp_store = create_store(temp_dir)
+      db_file_name = "datacommons.db"
+      db_file_path = os.path.join(temp_dir, db_file_name)
+      db_file = temp_store.as_dir().open_file(db_file_name)
       self._seed_db_from_input(db_file_path,
                                "sqlite_current_schema_populated.sql")
 
-      db = create_and_update_db(create_sqlite_config(db_file_path))
+      db = create_and_update_db(create_sqlite_config(db_file))
 
       db.maybe_clear_before_import()
 
       db.insert_triples(_TRIPLES)
-      foo_file = create_store(temp_dir).as_dir().open_file("foo.csv")
+      foo_file = temp_store.as_dir().open_file("foo.csv")
       db.insert_observations(_OBSERVATIONS, foo_file)
       db.insert_key_value(_KEY_VALUE[0], _KEY_VALUE[1])
       db.insert_import_info(status=ImportStatus.SUCCESS)
@@ -237,7 +249,9 @@ class TestDb(unittest.TestCase):
     In write mode, replaces the goldens instead.
     """
     with tempfile.TemporaryDirectory() as temp_dir:
-      observations_file_path = os.path.join(temp_dir, "observations.csv")
+      temp_store = create_store(temp_dir)
+      observations_file_name = "observations.csv"
+      observations_file_path = os.path.join(temp_dir, observations_file_name)
       expected_observations_file = os.path.join(_EXPECTED_DIR,
                                                 "observations.csv")
       tmcf_file = os.path.join(temp_dir, "observations.tmcf")
@@ -245,11 +259,9 @@ class TestDb(unittest.TestCase):
       mcf_file = os.path.join(temp_dir, "schema.mcf")
       expected_mcf_file = os.path.join(_EXPECTED_DIR, "schema.mcf")
 
-      db = create_and_update_db(create_main_dc_config(temp_dir))
+      db = create_and_update_db(create_main_dc_config(temp_store.as_dir()))
       db.insert_triples(_TRIPLES)
-      observations_file = create_store(observations_file_path,
-                                       create_if_missing=True,
-                                       treat_as_file=True).as_file()
+      observations_file = temp_store.as_dir().open_file(observations_file_name)
       db.insert_observations(_OBSERVATIONS, observations_file)
       db.insert_import_info(status=ImportStatus.SUCCESS)
       db.commit_and_close()
@@ -298,14 +310,9 @@ class TestDb(unittest.TestCase):
       get_cloud_sql_config_from_env()
 
   @mock.patch.dict(os.environ, {})
-  def test_get_sqlite_config_from_env_empty(self):
-    self.assertIsNone(get_sqlite_config_from_env())
+  def test_get_sqlite_path_from_env_empty(self):
+    self.assertIsNone(get_sqlite_path_from_env())
 
   @mock.patch.dict(os.environ, {"SQLITE_PATH": "/path/datacommons.db"})
-  def test_get_sqlite_config_from_env(self):
-    self.assertDictEqual(get_sqlite_config_from_env(), {
-        "type": "sqlite",
-        "params": {
-            "dbFilePath": "/path/datacommons.db"
-        }
-    })
+  def test_get_sqlite_path_from_env(self):
+    self.assertEqual(get_sqlite_path_from_env(), "/path/datacommons.db")

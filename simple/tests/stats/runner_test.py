@@ -20,10 +20,7 @@ import tempfile
 import unittest
 from unittest.mock import MagicMock
 
-import pandas as pd
 from stats import constants
-from stats.data import Observation
-from stats.data import Triple
 from stats.runner import RunMode
 from stats.runner import Runner
 from tests.stats.test_util import compare_files

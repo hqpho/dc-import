@@ -54,7 +54,9 @@ def _test_import(test: unittest.TestCase, test_name: str):
                                                 create_if_missing=False)
     input_config_file = input_store.as_dir().open_file("config.json",
                                                        create_if_missing=False)
-    db_path = os.path.join(temp_dir, f"{test_name}.db")
+    db_file_name = f"{test_name}.db"
+    db_path = os.path.join(temp_dir, db_file_name)
+    db_file = temp_store.as_dir().open_file(db_file_name)
 
     output_triples_path = os.path.join(temp_dir, f"{test_name}.triples.db.csv")
     expected_triples_path = os.path.join(_EXPECTED_DIR,
@@ -63,7 +65,7 @@ def _test_import(test: unittest.TestCase, test_name: str):
     config = Config(data=json.loads(input_config_file.read()))
     nodes = Nodes(config)
 
-    db = create_and_update_db(create_sqlite_config(db_path))
+    db = create_and_update_db(create_sqlite_config(db_file))
     report_file = temp_store.as_dir().open_file("report.json")
     reporter = FileImportReporter(input_file.full_path(),
                                   ImportReporter(report_file))

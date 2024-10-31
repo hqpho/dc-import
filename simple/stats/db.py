@@ -34,6 +34,7 @@ from stats.data import STAT_VAR_GROUP
 from stats.data import STATISTICAL_VARIABLE
 from stats.data import Triple
 from util.filesystem import create_store
+from util.filesystem import Dir
 from util.filesystem import File
 
 FIELD_DB_TYPE = "type"
@@ -42,7 +43,7 @@ TYPE_CLOUD_SQL = "cloudsql"
 TYPE_SQLITE = "sqlite"
 TYPE_MAIN_DC = "maindc"
 
-SQLITE_DB_FILE_PATH = "dbFilePath"
+SQLITE_DB_FILE = "dbFile"
 
 CLOUD_MY_SQL_INSTANCE = "instance"
 CLOUD_MY_SQL_USER = "user"
@@ -237,8 +238,7 @@ class MainDcDb(Db):
     assert db_params
     assert MAIN_DC_OUTPUT_DIR in db_params
 
-    self.output_store = create_store(db_params[MAIN_DC_OUTPUT_DIR])
-    self.output_dir = self.output_store.as_dir()
+    self.output_dir = db_params[MAIN_DC_OUTPUT_DIR]
     # dcid to node dict
     self.nodes: dict[str, McfNode] = {}
 
@@ -270,8 +270,6 @@ class MainDcDb(Db):
     # TMCF
     self.output_dir.open_file(OBSERVATIONS_TMCF_FILE_NAME).write(
         OBSERVATIONS_TMCF)
-
-    self.output_store.close()
 
     # Not supported for main DC at this time.
     def select_triples_by_subject_type(self, type_of: str) -> list[Triple]:
@@ -385,30 +383,25 @@ class SqliteDbEngine(DbEngine):
 
   def __init__(self, db_params: dict) -> None:
     assert db_params
-    assert SQLITE_DB_FILE_PATH in db_params
+    assert SQLITE_DB_FILE in db_params
 
-    self.db_file_path = db_params[SQLITE_DB_FILE_PATH]
-    self.db_perm_store = create_store(self.db_file_path,
-                                      create_if_missing=True,
-                                      treat_as_file=True)
     self.db_temp_store = None
+    self.db_final_file = None
+    self.db_file = db_params[SQLITE_DB_FILE]
+    if not self.db_file.syspath():
+      logging.info("Copying DB to local storage from %s",
+                   self.db_file.full_path())
+      # Copy to disk
+      self.db_temp_store = create_store("temp://")
+      self.db_final_file = self.db_file
+      self.db_file = self.db_temp_store.as_dir().open_file(
+          "local.db", create_if_missing=True)
+      self.db_final_file.copy_to(self.db_file)
+      logging.info("Local copy of DB is %s", self.db_file.syspath())
 
-    # If file storage is high-latency, cache to a local temp file and
-    # copy over on commit.
-    # TODO Copy if it's not an OSFS no matter what.
-    if self.db_perm_store.is_high_latency():
-      logging.info(
-          f"Using temp local db since path is high-latency: {self.db_file_path}"
-      )
-      self.db_temp_store = create_store(tempfile.NamedTemporaryFile().name)
-      self.db_perm_store.as_file().copy_to(self.db_temp_store.as_file())
-
-    self.db_file = self.db_temp_store.as_file(
-    ) if self.db_temp_store else self.db_perm_store.as_file()
-
-    logging.info("Connecting to SQLite: %s", self.db_file.path)
-    self.connection = sqlite3.connect(self.db_file.full_path())
-    logging.info("Connected to SQLite: %s", self.db_file.path)
+    logging.info("Connecting to SQLite: %s", self.db_file.full_path())
+    self.connection = sqlite3.connect(self.db_file.syspath())
+    logging.info("Connected to SQLite: %s", self.db_file.full_path())
 
     self.cursor = self.connection.cursor()
 
@@ -439,7 +432,7 @@ class SqliteDbEngine(DbEngine):
       logging.info("Index created: %s", index.index_name)
 
   def __str__(self) -> str:
-    return f"{TYPE_SQLITE}: {self.db_file_path}"
+    return f"{TYPE_SQLITE}: {self.db_file.full_path()}"
 
   def init_or_update_tables(self):
     for statement in _INIT_TABLE_STATEMENTS:
@@ -475,11 +468,9 @@ class SqliteDbEngine(DbEngine):
     self.connection.close()
 
     if self.db_temp_store:
-      logging.info("Writing sqlite db to permanent storage: %s (%s bytes)")
-      self.db_temp_store.as_file().copy_to(self.db_perm_store.as_file())
+      logging.info("Copying temp DB back to permanent storage")
+      self.db_file.copy_to(self.db_final_file)
       self.db_temp_store.close()
-
-    self.db_perm_store.close()
 
 
 # Parameters needed to connect to a Cloud SQL instance.
@@ -648,24 +639,21 @@ def create_and_update_db(config: dict) -> Db:
   return SqlDb(config)
 
 
-def create_sqlite_config(sqlite_db_file_path: str) -> dict:
+def create_sqlite_config(sqlite_db_file: File) -> dict:
   return {
       FIELD_DB_TYPE: TYPE_SQLITE,
       FIELD_DB_PARAMS: {
-          SQLITE_DB_FILE_PATH: sqlite_db_file_path
+          SQLITE_DB_FILE: sqlite_db_file
       }
   }
 
 
-def create_main_dc_config(output_dir: str) -> dict:
+def create_main_dc_config(output_dir: Dir) -> dict:
   return {FIELD_DB_TYPE: TYPE_MAIN_DC, MAIN_DC_OUTPUT_DIR: output_dir}
 
 
-def get_sqlite_config_from_env() -> dict | None:
-  sqlite_db_file_path = os.getenv(ENV_SQLITE_PATH)
-  if not sqlite_db_file_path:
-    return None
-  return create_sqlite_config(sqlite_db_file_path)
+def get_sqlite_path_from_env() -> str | None:
+  return os.getenv(ENV_SQLITE_PATH)
 
 
 def get_cloud_sql_config_from_env() -> dict | None:
